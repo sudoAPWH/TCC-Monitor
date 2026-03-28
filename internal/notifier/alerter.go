@@ -30,17 +30,13 @@ func (a *Alerter) CheckReading(ctx context.Context, reading db.Reading) {
 
 	low, high, err := a.db.GetThresholds()
 	if err != nil {
-		log.Printf("alerter: failed to get thresholds: %v", err)
 		return
 	}
 
 	// If both thresholds are zero/unset, nothing to check.
 	if low == 0 && high == 0 {
-		log.Printf("alerter: no thresholds set, skipping")
 		return
 	}
-
-	log.Printf("alerter: checking temp=%.1f against low=%.1f high=%.1f", reading.Temperature, low, high)
 
 	var plain, html string
 	temp := reading.Temperature

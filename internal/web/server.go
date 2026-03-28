@@ -239,10 +239,6 @@ func (s *Server) handleSettings(w http.ResponseWriter, r *http.Request) {
 				s.db.SetSetting("cooldown_minutes", strconv.Itoa(n))
 			}
 		}
-		if v := r.FormValue("matrix_room_id"); v != "" {
-			s.db.SetSetting("matrix_room_id", v)
-		}
-
 		w.Header().Set("Content-Type", "text/html")
 		w.Write([]byte(`<span class="text-green-600 font-medium">Settings saved!</span>`))
 
