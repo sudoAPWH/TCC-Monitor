@@ -9,7 +9,7 @@ import (
 	"maunium.net/go/mautrix"
 	"maunium.net/go/mautrix/crypto/cryptohelper"
 	"maunium.net/go/mautrix/crypto/verificationhelper"
-	"maunium.net/go/mautrix/event"
+	mxevent "maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/id"
 	"modernc.org/sqlite"
 
@@ -50,7 +50,7 @@ func (a *autoVerifyCallbacks) VerificationRequested(ctx context.Context, txnID i
 	}()
 }
 
-func (a *autoVerifyCallbacks) VerificationCancelled(ctx context.Context, txnID id.VerificationTransactionID, code event.VerificationCancelCode, reason string) {
+func (a *autoVerifyCallbacks) VerificationCancelled(ctx context.Context, txnID id.VerificationTransactionID, code mxevent.VerificationCancelCode, reason string) {
 	log.Printf("matrix: verification cancelled: %s (%s)", reason, code)
 }
 
@@ -134,8 +134,13 @@ func New(ctx context.Context, homeserver, username, password, pickleKey, cryptoD
 	}, nil
 }
 
-func (n *Notifier) SendAlert(ctx context.Context, roomID string, message string) error {
-	_, err := n.client.SendNotice(ctx, id.RoomID(roomID), message)
+func (n *Notifier) SendAlert(ctx context.Context, roomID string, plain string, html string) error {
+	_, err := n.client.SendMessageEvent(ctx, id.RoomID(roomID), mxevent.EventMessage, &mxevent.MessageEventContent{
+		MsgType:       mxevent.MsgText,
+		Body:          plain,
+		Format:        mxevent.FormatHTML,
+		FormattedBody: html,
+	})
 	if err != nil {
 		return fmt.Errorf("send matrix alert: %w", err)
 	}

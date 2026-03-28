@@ -38,16 +38,18 @@ func (a *Alerter) CheckReading(ctx context.Context, reading db.Reading) {
 		return
 	}
 
-	var message string
+	var plain, html string
 	temp := reading.Temperature
 
 	if high > 0 && temp > high {
-		message = fmt.Sprintf("Temperature alert: %.1f\u00b0C is above the high threshold of %.1f\u00b0C", temp, high)
+		plain = fmt.Sprintf("\u26a0\ufe0f Temperature Alert: %.1f\u00b0C is above the high threshold of %.1f\u00b0C", temp, high)
+		html = fmt.Sprintf("\u26a0\ufe0f <b>Temperature Alert</b><br><br>Current: <b>%.1f\u00b0C</b> — above the high threshold of <b>%.1f\u00b0C</b>", temp, high)
 	} else if low > 0 && temp < low {
-		message = fmt.Sprintf("Temperature alert: %.1f\u00b0C is below the low threshold of %.1f\u00b0C", temp, low)
+		plain = fmt.Sprintf("\u2744\ufe0f Temperature Alert: %.1f\u00b0C is below the low threshold of %.1f\u00b0C", temp, low)
+		html = fmt.Sprintf("\u2744\ufe0f <b>Temperature Alert</b><br><br>Current: <b>%.1f\u00b0C</b> — below the low threshold of <b>%.1f\u00b0C</b>", temp, low)
 	}
 
-	if message == "" {
+	if plain == "" {
 		return
 	}
 
@@ -68,14 +70,14 @@ func (a *Alerter) CheckReading(ctx context.Context, reading db.Reading) {
 		return
 	}
 
-	if err := a.notifier.SendAlert(ctx, roomID, message); err != nil {
+	if err := a.notifier.SendAlert(ctx, roomID, plain, html); err != nil {
 		log.Printf("alerter: failed to send alert: %v", err)
 		return
 	}
 
-	if err := a.db.RecordNotification(message); err != nil {
+	if err := a.db.RecordNotification(plain); err != nil {
 		log.Printf("alerter: failed to record notification: %v", err)
 	}
 
-	log.Printf("alerter: sent alert: %s", message)
+	log.Printf("alerter: sent alert: %s", plain)
 }
