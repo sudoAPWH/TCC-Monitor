@@ -28,7 +28,7 @@ A lightweight, self-hosted dashboard for monitoring Honeywell Total Connect Comf
    cp .env.example .env
    ```
 
-   Edit `.env` and fill in your TCC credentials and device ID. You can find your device ID in the URL when viewing your thermostat on [mytotalconnectcomfort.com](https://mytotalconnectcomfort.com).
+   Edit `.env` and fill in your TCC credentials and device ID. You can find your device ID in the URL when viewing your thermostat on [mytotalconnectcomfort.com](https://mytotalconnectcomfort.com). Make sure to set `TZ` to your timezone (e.g. `America/Chicago`) -- timestamps will show in UTC otherwise.
 
 3. **Run with Docker Compose:**
 
@@ -51,7 +51,7 @@ All configuration is done through environment variables (set in `.env`):
 | `DB_PATH` | No | `tcc-monitor.db` | Path to the SQLite database file |
 | `LISTEN_ADDR` | No | `:8080` | Address and port for the web server |
 | `APP_TITLE` | No | `TCC Monitor` | Dashboard title shown in the header and browser tab |
-| `TZ` | No | `UTC` | Timezone for displayed timestamps (e.g. `America/Edmonton`) |
+| `TZ` | No | `UTC` | Timezone for displayed timestamps (e.g. `America/Chicago`) |
 
 ### Matrix Notifications (optional)
 

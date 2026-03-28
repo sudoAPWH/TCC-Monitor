@@ -9,7 +9,7 @@ services:
       - TCC_DEVICE_ID=${TCC_DEVICE_ID}
       - POLL_INTERVAL=${POLL_INTERVAL:-10m}
       - DB_PATH=/data/tcc-monitor.db
-      - TZ=America/Edmonton
+      - TZ=${TZ:-UTC}
       - APP_TITLE=${APP_TITLE:-TCC Monitor}
       - MATRIX_HOMESERVER=${MATRIX_HOMESERVER:-}
       - MATRIX_USERNAME=${MATRIX_USERNAME:-}
