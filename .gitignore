@@ -3,4 +3,5 @@
 *.db-shm
 .env
 .DS_Store
+.claude/
 tcc-monitor
