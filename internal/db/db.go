@@ -65,13 +65,31 @@ func migrate(conn *sql.DB) error {
 	if err != nil {
 		return fmt.Errorf("migrate: %w", err)
 	}
+
+	// Convert any old ISO 8601 timestamps (with T and Z) to SQLite-native format.
+	conn.Exec("UPDATE readings SET timestamp = replace(replace(timestamp, 'T', ' '), 'Z', '') WHERE timestamp LIKE '%T%'")
+	conn.Exec("UPDATE notifications SET timestamp = replace(replace(timestamp, 'T', ' '), 'Z', '') WHERE timestamp LIKE '%T%'")
+
 	return nil
+}
+
+func parseTimestamp(ts string) time.Time {
+	for _, layout := range []string{
+		"2006-01-02 15:04:05",
+		"2006-01-02T15:04:05Z",
+		"2006-01-02 15:04:05+00:00",
+	} {
+		if t, err := time.Parse(layout, ts); err == nil {
+			return t
+		}
+	}
+	return time.Time{}
 }
 
 func (d *DB) InsertReading(r Reading) error {
 	_, err := d.conn.Exec(
 		"INSERT INTO readings (timestamp, temperature, setpoint) VALUES (?, ?, ?)",
-		r.Timestamp.UTC().Format("2006-01-02T15:04:05Z"), r.Temperature, r.Setpoint,
+		r.Timestamp.UTC().Format("2006-01-02 15:04:05"), r.Temperature, r.Setpoint,
 	)
 	return err
 }
@@ -85,17 +103,14 @@ func (d *DB) Latest() (*Reading, error) {
 	if err := row.Scan(&r.ID, &ts, &r.Temperature, &r.Setpoint); err != nil {
 		return nil, err
 	}
-	r.Timestamp, _ = time.Parse("2006-01-02 15:04:05+00:00", ts)
-	if r.Timestamp.IsZero() {
-		r.Timestamp, _ = time.Parse("2006-01-02T15:04:05Z", ts)
-	}
+	r.Timestamp = parseTimestamp(ts)
 	return &r, nil
 }
 
 func (d *DB) ReadingsSince(since time.Time) ([]Reading, error) {
 	rows, err := d.conn.Query(
 		"SELECT id, timestamp, temperature, setpoint FROM readings WHERE timestamp >= ? ORDER BY timestamp ASC",
-		since.UTC().Format("2006-01-02T15:04:05Z"),
+		since.UTC().Format("2006-01-02 15:04:05"),
 	)
 	if err != nil {
 		return nil, err
@@ -207,7 +222,7 @@ func (d *DB) GetCooldownMinutes() int {
 func (d *DB) RecordNotification(message string) error {
 	_, err := d.conn.Exec(
 		"INSERT INTO notifications (timestamp, message) VALUES (?, ?)",
-		time.Now().UTC().Format(time.RFC3339), message,
+		time.Now().UTC().Format("2006-01-02 15:04:05"), message,
 	)
 	return err
 }
@@ -218,8 +233,7 @@ func (d *DB) GetLastNotificationTime() (time.Time, error) {
 	if err != nil {
 		return time.Time{}, err
 	}
-	t, _ := time.Parse(time.RFC3339, ts)
-	return t, nil
+	return parseTimestamp(ts), nil
 }
 
 func (d *DB) Close() error {
