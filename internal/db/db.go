@@ -207,7 +207,7 @@ func (d *DB) GetCooldownMinutes() int {
 func (d *DB) RecordNotification(message string) error {
 	_, err := d.conn.Exec(
 		"INSERT INTO notifications (timestamp, message) VALUES (?, ?)",
-		time.Now().UTC().Format("2006-01-02T15:04:05Z"), message,
+		time.Now().UTC().Format(time.RFC3339), message,
 	)
 	return err
 }
@@ -218,7 +218,7 @@ func (d *DB) GetLastNotificationTime() (time.Time, error) {
 	if err != nil {
 		return time.Time{}, err
 	}
-	t, _ := time.Parse("2006-01-02T15:04:05Z", ts)
+	t, _ := time.Parse(time.RFC3339, ts)
 	return t, nil
 }
 
