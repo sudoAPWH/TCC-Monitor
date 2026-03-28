@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Greenhouse Dashboard</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/htmx.org@2.0.4"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+</head>
+<body class="bg-gray-50 text-gray-800 min-h-screen">
+    <div class="max-w-6xl mx-auto px-4 py-8">
+        <h1 class="text-3xl font-bold mb-8 text-center text-gray-900">Greenhouse Dashboard</h1>
+
+        <!-- Hero stat cards, refreshed by HTMX every 60s -->
+        <div id="current-stats"
+             hx-get="/partial/current"
+             hx-trigger="every 60s"
+             hx-swap="innerHTML">
+            {{template "current_partial.html" .}}
+        </div>
+
+        <!-- Chart period selector -->
+        <div class="flex justify-center gap-4 mb-6">
+            <button id="btn-24h" onclick="loadChart(24)"
+                class="px-4 py-2 rounded-lg bg-blue-600 text-white hover:bg-blue-500 font-medium transition shadow">
+                24 Hours
+            </button>
+            <button id="btn-7d" onclick="loadChart(168)"
+                class="px-4 py-2 rounded-lg bg-white text-gray-700 border border-gray-300 hover:bg-gray-100 font-medium transition shadow">
+                7 Days
+            </button>
+        </div>
+
+        <!-- Temperature Chart -->
+        <div class="bg-white rounded-xl p-6 shadow mb-8 border border-gray-200">
+            <h2 class="text-lg font-semibold mb-4 text-gray-700">Temperature Trend</h2>
+            <canvas id="tempChart" height="100"></canvas>
+        </div>
+
+        <!-- History Section -->
+        <h2 class="text-2xl font-bold mb-4 text-gray-900">History</h2>
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
+            <!-- Calendar -->
+            <div class="bg-white rounded-xl p-5 shadow border border-gray-200">
+                <div class="flex items-center justify-between mb-4">
+                    <button onclick="changeMonth(-1)" class="p-2 rounded-lg hover:bg-gray-100 transition text-gray-600">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/>
+                        </svg>
+                    </button>
+                    <span id="cal-title" class="text-lg font-semibold text-gray-800"></span>
+                    <button onclick="changeMonth(1)" class="p-2 rounded-lg hover:bg-gray-100 transition text-gray-600">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
+                        </svg>
+                    </button>
+                </div>
+                <!-- Day headers -->
+                <div class="grid grid-cols-7 gap-1 text-center text-xs font-medium text-gray-400 mb-2">
+                    <span>Su</span><span>Mo</span><span>Tu</span><span>We</span>
+                    <span>Th</span><span>Fr</span><span>Sa</span>
+                </div>
+                <div id="cal-grid" class="grid grid-cols-7 gap-1"></div>
+            </div>
+
+            <!-- Day Chart -->
+            <div class="lg:col-span-2 bg-white rounded-xl p-6 shadow border border-gray-200">
+                <h3 id="day-chart-title" class="text-lg font-semibold mb-4 text-gray-400">Select a day to view</h3>
+                <div id="day-chart-empty" class="flex items-center justify-center h-48 text-gray-300">
+                    <p class="text-lg">Click a highlighted day on the calendar</p>
+                </div>
+                <canvas id="dayChart" height="120" class="hidden"></canvas>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let tempChart, dayChart;
+        let calYear, calMonth;
+        let selectedDate = null;
+
+        const monthNames = ['January','February','March','April','May','June',
+                            'July','August','September','October','November','December'];
+
+        const btnActive = 'px-4 py-2 rounded-lg bg-blue-600 text-white hover:bg-blue-500 font-medium transition shadow';
+        const btnInactive = 'px-4 py-2 rounded-lg bg-white text-gray-700 border border-gray-300 hover:bg-gray-100 font-medium transition shadow';
+
+        function chartOpts(maxTicks) {
+            return {
+                responsive: true,
+                interaction: { mode: 'index', intersect: false },
+                scales: {
+                    x: {
+                        ticks: { color: '#6b7280', maxTicksLimit: maxTicks || 12 },
+                        grid: { color: '#f3f4f6' }
+                    },
+                    y: {
+                        ticks: { color: '#6b7280' },
+                        grid: { color: '#f3f4f6' },
+                        beginAtZero: false,
+                    }
+                },
+                plugins: { legend: { labels: { color: '#374151' } } }
+            };
+        }
+
+        function makeDatasets() {
+            return [
+                {
+                    label: 'Temperature (\u00B0C)',
+                    data: [],
+                    borderColor: '#2563eb',
+                    backgroundColor: 'rgba(37,99,235,0.08)',
+                    fill: true, tension: 0.3, pointRadius: 2, borderWidth: 2,
+                },
+                {
+                    label: 'Setpoint (\u00B0C)',
+                    data: [],
+                    borderColor: '#d97706',
+                    borderDash: [6, 3],
+                    tension: 0.3, pointRadius: 0, borderWidth: 2,
+                }
+            ];
+        }
+
+        function initCharts() {
+            tempChart = new Chart(
+                document.getElementById('tempChart').getContext('2d'),
+                { type: 'line', data: { labels: [], datasets: makeDatasets() }, options: chartOpts(12) }
+            );
+            dayChart = new Chart(
+                document.getElementById('dayChart').getContext('2d'),
+                { type: 'line', data: { labels: [], datasets: makeDatasets() }, options: chartOpts(24) }
+            );
+        }
+
+        async function loadChart(hours) {
+            document.getElementById('btn-24h').className = hours === 24 ? btnActive : btnInactive;
+            document.getElementById('btn-7d').className = hours === 168 ? btnActive : btnInactive;
+            try {
+                const resp = await fetch(`/api/readings?hours=${hours}`);
+                const data = await resp.json();
+                tempChart.data.labels = data.labels || [];
+                tempChart.data.datasets[0].data = data.temps || [];
+                tempChart.data.datasets[1].data = data.setpoints || [];
+                tempChart.update();
+            } catch (e) {
+                console.error('Failed to load chart data:', e);
+            }
+        }
+
+        // --- Calendar ---
+        async function loadCalendar(year, month) {
+            calYear = year;
+            calMonth = month;
+            document.getElementById('cal-title').textContent = `${monthNames[month - 1]} ${year}`;
+
+            let daysWithData = [];
+            try {
+                const resp = await fetch(`/api/calendar?year=${year}&month=${month}`);
+                const data = await resp.json();
+                daysWithData = data.days || [];
+            } catch (e) {
+                console.error('Failed to load calendar:', e);
+            }
+
+            const grid = document.getElementById('cal-grid');
+            grid.innerHTML = '';
+
+            const firstDay = new Date(year, month - 1, 1).getDay();
+            const daysInMonth = new Date(year, month, 0).getDate();
+            const today = new Date();
+            const todayStr = `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}-${String(today.getDate()).padStart(2,'0')}`;
+
+            for (let i = 0; i < firstDay; i++) {
+                grid.appendChild(document.createElement('div'));
+            }
+
+            for (let d = 1; d <= daysInMonth; d++) {
+                const dateStr = `${year}-${String(month).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+                const cell = document.createElement('button');
+                cell.textContent = d;
+
+                const hasData = daysWithData.includes(dateStr);
+                const isToday = dateStr === todayStr;
+                const isSelected = dateStr === selectedDate;
+
+                let cls = 'w-full aspect-square rounded-lg text-sm font-medium flex items-center justify-center transition ';
+
+                if (isSelected) {
+                    cls += 'bg-blue-600 text-white shadow';
+                } else if (hasData && isToday) {
+                    cls += 'bg-blue-100 text-blue-800 ring-2 ring-blue-400 hover:bg-blue-200 cursor-pointer';
+                } else if (hasData) {
+                    cls += 'bg-blue-50 text-blue-700 hover:bg-blue-100 cursor-pointer';
+                } else if (isToday) {
+                    cls += 'bg-gray-100 text-gray-800 font-semibold';
+                } else {
+                    cls += 'text-gray-300';
+                }
+
+                cell.className = cls;
+
+                if (hasData) {
+                    cell.onclick = () => loadDay(dateStr);
+                }
+
+                grid.appendChild(cell);
+            }
+        }
+
+        function changeMonth(delta) {
+            let m = calMonth + delta;
+            let y = calYear;
+            if (m < 1) { m = 12; y--; }
+            if (m > 12) { m = 1; y++; }
+            loadCalendar(y, m);
+        }
+
+        async function loadDay(dateStr) {
+            selectedDate = dateStr;
+            loadCalendar(calYear, calMonth);
+
+            const [y, m, d] = dateStr.split('-');
+            const dateObj = new Date(y, m - 1, d);
+            const title = dateObj.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+            document.getElementById('day-chart-title').textContent = title;
+            document.getElementById('day-chart-title').className = 'text-lg font-semibold mb-4 text-gray-700';
+
+            // Show chart, hide placeholder
+            document.getElementById('day-chart-empty').classList.add('hidden');
+            document.getElementById('dayChart').classList.remove('hidden');
+
+            try {
+                const resp = await fetch(`/api/readings/day?date=${dateStr}`);
+                const data = await resp.json();
+                dayChart.data.labels = data.labels || [];
+                dayChart.data.datasets[0].data = data.temps || [];
+                dayChart.data.datasets[1].data = data.setpoints || [];
+                dayChart.update();
+            } catch (e) {
+                console.error('Failed to load day data:', e);
+            }
+        }
+
+        // Init
+        initCharts();
+        loadChart(24);
+        const now = new Date();
+        loadCalendar(now.getFullYear(), now.getMonth() + 1);
+    </script>
+</body>
+</html>
+
+{{define "current_partial.html"}}
+<div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+    <div class="bg-gradient-to-br from-blue-500 to-blue-700 rounded-xl p-8 text-center shadow-lg text-white">
+        <p class="text-sm uppercase tracking-wider text-blue-100 mb-2">Current Temperature</p>
+        <p class="text-6xl font-bold">{{printf "%.1f" .Temperature}}&deg;C</p>
+    </div>
+    <div class="bg-gradient-to-br from-amber-500 to-amber-700 rounded-xl p-8 text-center shadow-lg text-white">
+        <p class="text-sm uppercase tracking-wider text-amber-100 mb-2">Heat Setpoint</p>
+        <p class="text-6xl font-bold">{{printf "%.1f" .Setpoint}}&deg;C</p>
+    </div>
+</div>
+{{end}}
