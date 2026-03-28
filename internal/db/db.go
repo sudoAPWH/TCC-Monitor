@@ -3,6 +3,7 @@ package db
 import (
 	"database/sql"
 	"fmt"
+	"strconv"
 	"time"
 
 	_ "modernc.org/sqlite"
@@ -48,6 +49,18 @@ func migrate(conn *sql.DB) error {
 			setpoint   REAL NOT NULL
 		);
 		CREATE INDEX IF NOT EXISTS idx_readings_timestamp ON readings(timestamp);
+
+		CREATE TABLE IF NOT EXISTS settings (
+			key   TEXT PRIMARY KEY,
+			value TEXT NOT NULL
+		);
+
+		CREATE TABLE IF NOT EXISTS notifications (
+			id        INTEGER PRIMARY KEY AUTOINCREMENT,
+			timestamp DATETIME NOT NULL,
+			message   TEXT NOT NULL
+		);
+		CREATE INDEX IF NOT EXISTS idx_notifications_timestamp ON notifications(timestamp);
 	`)
 	if err != nil {
 		return fmt.Errorf("migrate: %w", err)
@@ -152,6 +165,61 @@ func (d *DB) DaysWithData(year int, month int) ([]string, error) {
 		days = append(days, day)
 	}
 	return days, rows.Err()
+}
+
+func (d *DB) GetSetting(key string) (string, error) {
+	var value string
+	err := d.conn.QueryRow("SELECT value FROM settings WHERE key = ?", key).Scan(&value)
+	return value, err
+}
+
+func (d *DB) SetSetting(key, value string) error {
+	_, err := d.conn.Exec("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)", key, value)
+	return err
+}
+
+func (d *DB) GetThresholds() (low, high float64, err error) {
+	if v, e := d.GetSetting("threshold_low"); e == nil {
+		low, _ = strconv.ParseFloat(v, 64)
+	}
+	if v, e := d.GetSetting("threshold_high"); e == nil {
+		high, _ = strconv.ParseFloat(v, 64)
+	}
+	return low, high, nil
+}
+
+func (d *DB) SetThresholds(low, high float64) error {
+	if err := d.SetSetting("threshold_low", strconv.FormatFloat(low, 'f', 1, 64)); err != nil {
+		return err
+	}
+	return d.SetSetting("threshold_high", strconv.FormatFloat(high, 'f', 1, 64))
+}
+
+func (d *DB) GetCooldownMinutes() int {
+	if v, err := d.GetSetting("cooldown_minutes"); err == nil {
+		if n, err := strconv.Atoi(v); err == nil {
+			return n
+		}
+	}
+	return 30
+}
+
+func (d *DB) RecordNotification(message string) error {
+	_, err := d.conn.Exec(
+		"INSERT INTO notifications (timestamp, message) VALUES (?, ?)",
+		time.Now().UTC().Format("2006-01-02T15:04:05Z"), message,
+	)
+	return err
+}
+
+func (d *DB) GetLastNotificationTime() (time.Time, error) {
+	var ts string
+	err := d.conn.QueryRow("SELECT timestamp FROM notifications ORDER BY timestamp DESC LIMIT 1").Scan(&ts)
+	if err != nil {
+		return time.Time{}, err
+	}
+	t, _ := time.Parse("2006-01-02T15:04:05Z", ts)
+	return t, nil
 }
 
 func (d *DB) Close() error {

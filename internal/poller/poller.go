@@ -9,21 +9,27 @@ import (
 	"tcc-monitor/internal/db"
 )
 
-type Poller struct {
-	thermostat honeywell.Thermostat
-	db         *db.DB
-	username   string
-	password   string
-	interval   time.Duration
+type AlertChecker interface {
+	CheckReading(ctx context.Context, reading db.Reading)
 }
 
-func New(deviceID int, username, password string, interval time.Duration, database *db.DB) *Poller {
+type Poller struct {
+	thermostat   honeywell.Thermostat
+	db           *db.DB
+	username     string
+	password     string
+	interval     time.Duration
+	alertChecker AlertChecker
+}
+
+func New(deviceID int, username, password string, interval time.Duration, database *db.DB, alertChecker AlertChecker) *Poller {
 	return &Poller{
-		thermostat: honeywell.NewThermostat(deviceID),
-		db:         database,
-		username:   username,
-		password:   password,
-		interval:   interval,
+		thermostat:   honeywell.NewThermostat(deviceID),
+		db:           database,
+		username:     username,
+		password:     password,
+		interval:     interval,
+		alertChecker: alertChecker,
 	}
 }
 
@@ -71,4 +77,8 @@ func (p *Poller) poll(ctx context.Context) {
 
 	log.Printf("poller: recorded temp=%.1f setpoint=%.1f",
 		reading.Temperature, reading.Setpoint)
+
+	if p.alertChecker != nil {
+		p.alertChecker.CheckReading(ctx, reading)
+	}
 }

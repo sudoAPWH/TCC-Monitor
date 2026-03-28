@@ -11,6 +11,7 @@ import (
 
 	"tcc-monitor/internal/config"
 	"tcc-monitor/internal/db"
+	"tcc-monitor/internal/notifier"
 	"tcc-monitor/internal/poller"
 	"tcc-monitor/internal/web"
 )
@@ -30,12 +31,25 @@ func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
+	// Optionally start Matrix notifier.
+	var alertChecker poller.AlertChecker
+	if cfg.MatrixEnabled() {
+		n, err := notifier.New(ctx, cfg.MatrixHomeserver, cfg.MatrixUsername, cfg.MatrixPassword, cfg.MatrixPickleKey, cfg.MatrixCryptoDBPath, database)
+		if err != nil {
+			log.Printf("matrix: failed to start, notifications disabled: %v", err)
+		} else {
+			defer n.Stop()
+			alertChecker = notifier.NewAlerter(n, database, cfg.MatrixRoomID)
+			log.Println("matrix: notifications enabled")
+		}
+	}
+
 	// Start the TCC poller in the background.
-	p := poller.New(cfg.TCCDeviceID, cfg.TCCUsername, cfg.TCCPassword, cfg.PollInterval, database)
+	p := poller.New(cfg.TCCDeviceID, cfg.TCCUsername, cfg.TCCPassword, cfg.PollInterval, database, alertChecker)
 	go p.Run(ctx)
 
 	// Start the web server.
-	srv, err := web.NewServer(database)
+	srv, err := web.NewServer(database, cfg.AppTitle, cfg.MatrixEnabled())
 	if err != nil {
 		log.Fatalf("web: %v", err)
 	}

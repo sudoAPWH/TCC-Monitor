@@ -16,29 +16,42 @@ import (
 var templateFS embed.FS
 
 type Server struct {
-	db   *db.DB
-	tmpl *template.Template
-	mux  *http.ServeMux
+	db            *db.DB
+	tmpl          *template.Template
+	mux           *http.ServeMux
+	appTitle      string
+	matrixEnabled bool
 }
 
-func NewServer(database *db.DB) (*Server, error) {
+func NewServer(database *db.DB, appTitle string, matrixEnabled bool) (*Server, error) {
 	tmpl, err := template.ParseFS(templateFS, "templates/*.html")
 	if err != nil {
 		return nil, err
 	}
 
-	s := &Server{db: database, tmpl: tmpl, mux: http.NewServeMux()}
+	s := &Server{db: database, tmpl: tmpl, mux: http.NewServeMux(), appTitle: appTitle, matrixEnabled: matrixEnabled}
 	s.mux.HandleFunc("/", s.handleDashboard)
 	s.mux.HandleFunc("/api/current", s.handleCurrent)
 	s.mux.HandleFunc("/api/readings", s.handleReadings)
 	s.mux.HandleFunc("/partial/current", s.handleCurrentPartial)
 	s.mux.HandleFunc("/api/readings/day", s.handleDayReadings)
 	s.mux.HandleFunc("/api/calendar", s.handleCalendar)
+	s.mux.HandleFunc("/api/settings", s.handleSettings)
 	return s, nil
 }
 
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	s.mux.ServeHTTP(w, r)
+}
+
+type dashboardData struct {
+	Title           string
+	Temperature     float64
+	Setpoint        float64
+	ThresholdLow    float64
+	ThresholdHigh   float64
+	CooldownMinutes int
+	MatrixEnabled   bool
 }
 
 func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
@@ -52,7 +65,19 @@ func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
 		latest = &db.Reading{}
 	}
 
-	if err := s.tmpl.ExecuteTemplate(w, "dashboard.html", latest); err != nil {
+	low, high, _ := s.db.GetThresholds()
+
+	data := dashboardData{
+		Title:           s.appTitle,
+		Temperature:     latest.Temperature,
+		Setpoint:        latest.Setpoint,
+		ThresholdLow:    low,
+		ThresholdHigh:   high,
+		CooldownMinutes: s.db.GetCooldownMinutes(),
+		MatrixEnabled:   s.matrixEnabled,
+	}
+
+	if err := s.tmpl.ExecuteTemplate(w, "dashboard.html", data); err != nil {
 		log.Printf("web: template error: %v", err)
 		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 	}
@@ -177,4 +202,51 @@ func (s *Server) handleCalendar(w http.ResponseWriter, r *http.Request) {
 		"month": month,
 		"days":  days,
 	})
+}
+
+func (s *Server) handleSettings(w http.ResponseWriter, r *http.Request) {
+	switch r.Method {
+	case http.MethodGet:
+		low, high, _ := s.db.GetThresholds()
+		roomID, _ := s.db.GetSetting("matrix_room_id")
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]any{
+			"threshold_low":    low,
+			"threshold_high":   high,
+			"cooldown_minutes": s.db.GetCooldownMinutes(),
+			"matrix_room_id":  roomID,
+			"matrix_enabled":  s.matrixEnabled,
+		})
+
+	case http.MethodPost:
+		if err := r.ParseForm(); err != nil {
+			http.Error(w, "bad request", http.StatusBadRequest)
+			return
+		}
+
+		if v := r.FormValue("threshold_low"); v != "" {
+			if f, err := strconv.ParseFloat(v, 64); err == nil {
+				s.db.SetSetting("threshold_low", strconv.FormatFloat(f, 'f', 1, 64))
+			}
+		}
+		if v := r.FormValue("threshold_high"); v != "" {
+			if f, err := strconv.ParseFloat(v, 64); err == nil {
+				s.db.SetSetting("threshold_high", strconv.FormatFloat(f, 'f', 1, 64))
+			}
+		}
+		if v := r.FormValue("cooldown_minutes"); v != "" {
+			if n, err := strconv.Atoi(v); err == nil && n > 0 {
+				s.db.SetSetting("cooldown_minutes", strconv.Itoa(n))
+			}
+		}
+		if v := r.FormValue("matrix_room_id"); v != "" {
+			s.db.SetSetting("matrix_room_id", v)
+		}
+
+		w.Header().Set("Content-Type", "text/html")
+		w.Write([]byte(`<span class="text-green-600 font-medium">Settings saved!</span>`))
+
+	default:
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+	}
 }

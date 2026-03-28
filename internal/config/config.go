@@ -3,6 +3,7 @@ package config
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"strconv"
 	"time"
 )
@@ -14,6 +15,18 @@ type Config struct {
 	PollInterval time.Duration
 	DBPath       string
 	ListenAddr   string
+	AppTitle     string
+
+	MatrixHomeserver   string
+	MatrixUsername     string
+	MatrixPassword     string
+	MatrixRoomID       string
+	MatrixPickleKey    string
+	MatrixCryptoDBPath string
+}
+
+func (c *Config) MatrixEnabled() bool {
+	return c.MatrixHomeserver != "" && c.MatrixUsername != "" && c.MatrixPassword != ""
 }
 
 func Load() (*Config, error) {
@@ -55,12 +68,31 @@ func Load() (*Config, error) {
 		listenAddr = ":8080"
 	}
 
+	appTitle := os.Getenv("APP_TITLE")
+	if appTitle == "" {
+		appTitle = "TCC Monitor"
+	}
+
+	matrixPickleKey := os.Getenv("MATRIX_PICKLE_KEY")
+	if matrixPickleKey == "" {
+		matrixPickleKey = "tcc-monitor"
+	}
+
+	matrixCryptoDBPath := filepath.Join(filepath.Dir(dbPath), "matrix-crypto.db")
+
 	return &Config{
-		TCCUsername:   username,
-		TCCPassword:   password,
-		TCCDeviceID:   deviceID,
-		PollInterval:  pollInterval,
-		DBPath:        dbPath,
-		ListenAddr:    listenAddr,
+		TCCUsername:         username,
+		TCCPassword:         password,
+		TCCDeviceID:         deviceID,
+		PollInterval:        pollInterval,
+		DBPath:              dbPath,
+		ListenAddr:          listenAddr,
+		AppTitle:            appTitle,
+		MatrixHomeserver:    os.Getenv("MATRIX_HOMESERVER"),
+		MatrixUsername:      os.Getenv("MATRIX_USERNAME"),
+		MatrixPassword:      os.Getenv("MATRIX_PASSWORD"),
+		MatrixRoomID:        os.Getenv("MATRIX_ROOM_ID"),
+		MatrixPickleKey:     matrixPickleKey,
+		MatrixCryptoDBPath:  matrixCryptoDBPath,
 	}, nil
 }

@@ -10,6 +10,12 @@ services:
       - POLL_INTERVAL=${POLL_INTERVAL:-10m}
       - DB_PATH=/data/tcc-monitor.db
       - TZ=America/Edmonton
+      - APP_TITLE=${APP_TITLE:-TCC Monitor}
+      - MATRIX_HOMESERVER=${MATRIX_HOMESERVER:-}
+      - MATRIX_USERNAME=${MATRIX_USERNAME:-}
+      - MATRIX_PASSWORD=${MATRIX_PASSWORD:-}
+      - MATRIX_ROOM_ID=${MATRIX_ROOM_ID:-}
+      - MATRIX_PICKLE_KEY=${MATRIX_PICKLE_KEY:-tcc-monitor}
     volumes:
       - tcc-data:/data
     restart: unless-stopped

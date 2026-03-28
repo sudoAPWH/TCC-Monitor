@@ -3,14 +3,14 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Greenhouse Dashboard</title>
+    <title>{{.Title}}</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/htmx.org@2.0.4"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
 </head>
 <body class="bg-gray-50 text-gray-800 min-h-screen">
     <div class="max-w-6xl mx-auto px-4 py-8">
-        <h1 class="text-3xl font-bold mb-8 text-center text-gray-900">Greenhouse Dashboard</h1>
+        <h1 class="text-3xl font-bold mb-8 text-center text-gray-900">{{.Title}}</h1>
 
         <!-- Hero stat cards, refreshed by HTMX every 60s -->
         <div id="current-stats"
@@ -72,6 +72,48 @@
                 </div>
                 <canvas id="dayChart" height="120" class="hidden"></canvas>
             </div>
+        </div>
+
+        <!-- Alert Settings -->
+        <h2 class="text-2xl font-bold mb-4 text-gray-900">Alert Settings</h2>
+        <div class="bg-white rounded-xl p-6 shadow mb-8 border border-gray-200">
+            <form hx-post="/api/settings" hx-target="#settings-status" hx-swap="innerHTML"
+                  class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 items-end">
+                <div>
+                    <label class="block text-sm font-medium text-gray-600 mb-1">Low Threshold (&deg;C)</label>
+                    <input type="number" name="threshold_low" step="0.1"
+                           value="{{if .ThresholdLow}}{{printf "%.1f" .ThresholdLow}}{{end}}"
+                           placeholder="e.g. 5.0"
+                           class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-800">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-600 mb-1">High Threshold (&deg;C)</label>
+                    <input type="number" name="threshold_high" step="0.1"
+                           value="{{if .ThresholdHigh}}{{printf "%.1f" .ThresholdHigh}}{{end}}"
+                           placeholder="e.g. 35.0"
+                           class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-800">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-600 mb-1">Cooldown (minutes)</label>
+                    <input type="number" name="cooldown_minutes" min="1"
+                           value="{{.CooldownMinutes}}"
+                           class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-800">
+                </div>
+                <div class="flex items-end gap-3">
+                    <button type="submit"
+                            class="px-5 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-500 font-medium transition shadow">
+                        Save
+                    </button>
+                    <span id="settings-status"></span>
+                </div>
+            </form>
+            {{if not .MatrixEnabled}}
+            <p class="mt-4 text-sm text-gray-400">
+                Matrix notifications are not configured. Set <code class="bg-gray-100 px-1 rounded">MATRIX_HOMESERVER</code>,
+                <code class="bg-gray-100 px-1 rounded">MATRIX_USERNAME</code>, and
+                <code class="bg-gray-100 px-1 rounded">MATRIX_PASSWORD</code> environment variables to enable.
+            </p>
+            {{end}}
         </div>
     </div>
 
