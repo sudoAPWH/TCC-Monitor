@@ -2,4 +2,5 @@
 *.db-wal
 *.db-shm
 .env
+.DS_Store
 tcc-monitor
