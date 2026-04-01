@@ -4,27 +4,59 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"sync"
 	"time"
 
 	"tcc-monitor/internal/db"
 )
 
+type MatrixConfig struct {
+	Homeserver   string
+	Username     string
+	Password     string
+	PickleKey    string
+	CryptoDBPath string
+}
+
 type Alerter struct {
+	mu          sync.Mutex
 	notifier    *Notifier
+	matrixCfg   MatrixConfig
 	db          *db.DB
 	envRoomID   string
 }
 
-func NewAlerter(notifier *Notifier, database *db.DB, envRoomID string) *Alerter {
+func NewAlerter(notifier *Notifier, matrixCfg MatrixConfig, database *db.DB, envRoomID string) *Alerter {
 	return &Alerter{
 		notifier:  notifier,
+		matrixCfg: matrixCfg,
 		db:        database,
 		envRoomID: envRoomID,
 	}
 }
 
+// ensureNotifier returns the active notifier, attempting to connect if not yet ready.
+func (a *Alerter) ensureNotifier(ctx context.Context) *Notifier {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+
+	if a.notifier != nil {
+		return a.notifier
+	}
+
+	n, err := New(ctx, a.matrixCfg.Homeserver, a.matrixCfg.Username, a.matrixCfg.Password, a.matrixCfg.PickleKey, a.matrixCfg.CryptoDBPath, a.db)
+	if err != nil {
+		log.Printf("matrix: retry connect failed: %v", err)
+		return nil
+	}
+	log.Println("matrix: connected (retry succeeded)")
+	a.notifier = n
+	return n
+}
+
 func (a *Alerter) CheckReading(ctx context.Context, reading db.Reading) {
-	if a.notifier == nil {
+	n := a.ensureNotifier(ctx)
+	if n == nil {
 		return
 	}
 
@@ -70,7 +102,7 @@ func (a *Alerter) CheckReading(ctx context.Context, reading db.Reading) {
 		return
 	}
 
-	if err := a.notifier.SendAlert(ctx, roomID, plain, html); err != nil {
+	if err := n.SendAlert(ctx, roomID, plain, html); err != nil {
 		log.Printf("alerter: failed to send alert: %v", err)
 		return
 	}
@@ -80,4 +112,13 @@ func (a *Alerter) CheckReading(ctx context.Context, reading db.Reading) {
 	}
 
 	log.Printf("alerter: sent alert: %s", plain)
+}
+
+func (a *Alerter) Stop() {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if a.notifier != nil {
+		a.notifier.Stop()
+		a.notifier = nil
+	}
 }

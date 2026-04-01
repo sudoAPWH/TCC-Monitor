@@ -31,17 +31,27 @@ func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	// Optionally start Matrix notifier.
+	// Optionally start Matrix notifier (retries automatically if initial connect fails).
 	var alertChecker poller.AlertChecker
 	if cfg.MatrixEnabled() {
-		n, err := notifier.New(ctx, cfg.MatrixHomeserver, cfg.MatrixUsername, cfg.MatrixPassword, cfg.MatrixPickleKey, cfg.MatrixCryptoDBPath, database)
+		matrixCfg := notifier.MatrixConfig{
+			Homeserver:   cfg.MatrixHomeserver,
+			Username:     cfg.MatrixUsername,
+			Password:     cfg.MatrixPassword,
+			PickleKey:    cfg.MatrixPickleKey,
+			CryptoDBPath: cfg.MatrixCryptoDBPath,
+		}
+
+		n, err := notifier.New(ctx, matrixCfg.Homeserver, matrixCfg.Username, matrixCfg.Password, matrixCfg.PickleKey, matrixCfg.CryptoDBPath, database)
 		if err != nil {
-			log.Printf("matrix: failed to start, notifications disabled: %v", err)
+			log.Printf("matrix: initial connect failed, will retry: %v", err)
 		} else {
-			defer n.Stop()
-			alertChecker = notifier.NewAlerter(n, database, cfg.MatrixRoomID)
 			log.Println("matrix: notifications enabled")
 		}
+
+		alerter := notifier.NewAlerter(n, matrixCfg, database, cfg.MatrixRoomID)
+		defer alerter.Stop()
+		alertChecker = alerter
 	}
 
 	// Start the TCC poller in the background.
